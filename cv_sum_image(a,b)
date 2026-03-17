@@ -1,0 +1,29 @@
+import cv2
+# -----------------------------------------------------------------------------
+# >>> List 0,255 입력으로 그림그리기 <<<
+#------------------------------------
+# pixel_image = [[0,0,255,0,0],[0,0,255,0,0],[0,0,255,0,0],[0,0,255,0,0],[0,0,255,0,0]]
+import numpy as np # 언싸인드 uint로 바꿔줌
+
+# int - > unsigned int 8비트
+# image = np.array(pixel_image, dtype=np.uint8)
+# print(image)
+# print(image.shape)
+
+# cv2.imshow("pixel",image) # ( 창이름 , 이미지 불러오기)
+# cv2.waitKey(0) # 키보드의 키를 누를때까지 기다려라
+# cv2.destroyAllWindows() # 창을 닫아주세요 ( 메모리 누수 / 예외처리 )
+# -----------------------------------------------------------------------------
+
+image1 = cv2.imread("puppy1.jpg") # GRAYSCALE 컴퓨터가 보는시선
+image2 = cv2.imread("back_ground.jpg")
+image1 = cv2.resize(image1, (400, 400))
+image2 = cv2.resize(image2, (400, 400)) # 픽셀값을 동일하게해줌
+for i in np.arange(0.1,1.0,0.1):
+    image3 = cv2.addWeighted(image1, i, image2, 1.0 - i, 1.0)
+
+# image3 = cv2.addWeighted(image1, 0.8, image2, 0.5, 1.0) # 합성 출력값 조절
+    cv2.imshow("합성", image3)
+    cv2.waitKey(250)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
