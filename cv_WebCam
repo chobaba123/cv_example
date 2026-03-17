@@ -1,0 +1,16 @@
+import cv2
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("웹캠이 없습니다")
+    exit()
+while True:
+    _, frame = cap.read()
+    # image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    canny_image = cv2.Canny(frame, 100.0, 50.0)
+
+    cv2.imshow("WebCAM",frame) # ~frame
+    cv2.imshow("Edge", canny_image)
+    if cv2.waitKey(10) == 27:
+        break
+cap.release()
+cv2.destroyAllWindows()
