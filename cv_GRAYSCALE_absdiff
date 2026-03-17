@@ -1,0 +1,12 @@
+import cv2
+
+image1 = cv2.imread("puppy1.jpg", cv2.IMREAD_GRAYSCALE) # GRAYSCALE 컴퓨터가 보는시선
+image2 = cv2.imread("back_ground.jpg", cv2.IMREAD_GRAYSCALE)
+image1 = cv2.resize(image1, (400, 400))
+image2 = cv2.resize(image2, (400, 400)) # 픽셀값을 동일하게해줌
+# image3 = cv2.absdiff(image1, image2)
+# 물체 움직임  = subtract, 물체 인식(밝기 중요) = add, *영상의차이로 물체 움직임 확인(절대값) = cv2.absdiff
+image3 = cv2.bitwise_not(image1) # bitwise_or , bitwise_and, bitwise_not
+cv2.imshow("ABS", image3)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
