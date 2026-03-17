@@ -1,0 +1,11 @@
+import cv2
+
+image = cv2.imread("back_ground.jpg", cv2.IMREAD_GRAYSCALE)
+canny_edge = cv2.Canny(image, 100.0, 150.0)
+image = cv2.resize(image, (400, 400))
+canny_edge = cv2.resize(canny_edge, (400, 400))
+cv2.imshow("Original", image)
+cv2.imshow("Canny", canny_edge)
+
+cv2.waitKey(0)
+cv2.destroyAllWindows()
