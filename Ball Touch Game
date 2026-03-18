@@ -1,0 +1,89 @@
+import cv2
+import random
+
+class Ball:
+    def __init__(self):
+        super().__init__()
+        print("A Ball Object created")
+        self.radius = 0
+        (self.x, self.y) = (0, 0)
+        self.is_activate = False
+    def __del__(self):
+        print("A Ball Object deleted")
+
+# 랜덤한 위치를 생성하는 함수
+def get_random_position(frame_width, frame_height, radius) -> tuple:
+    x = random.randint(radius, frame_width - radius)
+    y = random.randint(radius, frame_height - radius)
+    return (x, y)
+
+def main() -> None:
+    capture = cv2.VideoCapture(0) # 웹캠 카메라 1번 (0, 1, 2...) 여러개 사용가능
+    if not capture.isOpened():
+        print("Cannot open camera")
+        return None
+
+    # 화면의 크기를 가져오기
+    frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"W : {frame_width}, H : {frame_height}")
+
+    # 빨간공의 객체화 및 초기화
+    red_ball = Ball() # 생성자 호출 -> 객체화
+    red_ball.radius = 30
+    (red_ball.x, red_ball.y) = get_random_position(frame_width, frame_height, red_ball.radius)
+    # ball touch 인식
+    red_ball.is_activate = True
+
+    score = 0 # 점수를 저장하는 변수
+    pre_gray_frame = None # 이전 frame을 저장
+    while True:
+        _, frame = capture.read()
+        if frame is None:
+          print("Cannot capture frame")
+          break
+        # 좌우 반전
+        frame = cv2.flip(frame, 1)
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # 현재 frame 저장 (OPEN CV -> BGR)
+
+        # 가우시안블러를 이용 (화면의 노이즈 제거)
+        gray_frame = cv2.GaussianBlur(gray_frame, (21, 21), 0) # (21,21 홀수적용이 좋음) 필터 사이즈
+        # 첫 프레임이면 현재 프레임을 복사해서 저장하고 넘어감
+        if pre_gray_frame is None:
+            pre_gray_frame = gray_frame
+            continue
+        # 움직임을 감지 <절대값적용>(현재 프레임 - 이전(과거)프레임)
+        diff_frame = cv2.absdiff(pre_gray_frame, gray_frame)
+        # 임계값 조절하기 (2진화 0,255)
+        _, thresh_frame = cv2.threshold(diff_frame, 15, 255, cv2.THRESH_BINARY)
+        # 공과의 출동 체크
+        if red_ball.is_activate:
+            (x1, y1) = max(0, red_ball.x - red_ball.radius), max(0, red_ball.y - red_ball.radius)
+            (x2, y2) = min(frame_width, red_ball.x + red_ball.radius), min(frame_height, red_ball.y + red_ball.radius)
+        # 사각형 R.O.I 프레임 만들기
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0,))
+            roi = thresh_frame[y1:y2, x1:x2]
+
+            #지금 R.O.I 영역에 픽셀 카운트
+            movement_pixel = cv2.countNonZero(roi)
+            area = (x2 - x1) * (y2 - y1) # 사각형의 넓이
+            if movement_pixel > area *  0.05: # 10 % 민감도
+                score += 10
+                print(f"터치 성공 - 점수 : {score}") # 콘솔 창에 점수가 나온다
+                # 새로운 위치에 공이 나오게하기
+                (red_ball.x, red_ball.y) = get_random_position(frame_width, frame_height, red_ball.radius)
+        # 화면에 공그리기
+        cv2.circle(frame, (red_ball.x, red_ball.y), red_ball.radius, (0, 0, 255), -1)
+        # 화면에 점수 표시
+        cv2.putText(frame, f"Score : {score}", (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.imshow("HIT BALL", frame)
+        # 현재 프레임을 이전 프레임으로 만들기
+        pre_gray_frame = gray_frame.copy()
+        if cv2.waitKey(20) == 27: # ESC 누르면 (0.02초 기다리고) 종료
+            break
+    capture.release()
+    cv2.destroyAllWindows()
+    return None
+
+if __name__ == "__main__": #이창이 메인/  메인함수 호출
+    main()
