@@ -1,0 +1,214 @@
+import cv2
+import numpy as np
+import random
+import time
+import winsound
+import threading
+from datetime import datetime
+
+# 1. 화면 및 기본 설정
+scr_w, scr_h = 800, 600
+
+
+def create_factory_background():
+    bg = np.full((scr_h, scr_w, 3), (30, 30, 30), dtype=np.uint8)
+    cv2.line(bg, (0, 450), (scr_w, 450), (100, 100, 100), 2)
+    for i in range(0, scr_w, 250):
+        cv2.rectangle(bg, (i, 0), (i + 15, 450), (50, 50, 50), -1)
+    for i in range(0, scr_w, 50):
+        cv2.line(bg, (i, 450), (i + 25, 480), (0, 180, 220), 2)
+    return bg
+
+
+factory_bg = create_factory_background()
+
+
+class Truck:
+    def __init__(self, name, x, y, color):
+        self.name, self.base_x, self.x, self.y, self.color = name, x, x, y, color
+        self.target_qty, self.current_qty, self.is_leaving, self.speed = random.randint(5, 10), 0, False, 0
+
+    def draw(self, img):
+        # 트럭 본체
+        cv2.rectangle(img, (self.x, self.y), (self.x + 120, self.y + 60), self.color, -1)
+        cv2.rectangle(img, (self.x + 120, self.y + 20), (self.x + 150, self.y + 60), (255, 255, 255), -1)
+        # 바퀴
+        cv2.circle(img, (self.x + 30, self.y + 70), 10, (50, 50, 50), -1)
+        cv2.circle(img, (self.x + 120, self.y + 70), 10, (50, 50, 50), -1)
+        # 트럭 위 카운트 레이블 (가장 중요!)
+        label = f"{self.name} [{self.current_qty}/{self.target_qty}]"
+        cv2.rectangle(img, (self.x, self.y - 35), (self.x + 150, self.y - 5), (0, 0, 0), -1)
+        cv2.putText(img, label, (self.x + 5, self.y - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+    def update(self):
+        global car_stats
+        if self.is_leaving:
+            self.speed += 3
+            self.x += self.speed
+            if self.x > scr_w:
+                car_stats[self.name.capitalize()] += 1
+                self.x, self.current_qty, self.is_leaving, self.speed = self.base_x, 0, False, 0
+                self.target_qty = random.randint(5, 10)
+
+
+def play_double_alert():
+    def alert_thread():
+        winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
+        time.sleep(0.2)
+        winsound.PlaySound("SystemHand", winsound.SND_ALIAS)
+
+    threading.Thread(target=alert_thread, daemon=True).start()
+
+
+# 2. 전역 변수 초기화
+truck_objects = [Truck("RED", 620, 100, (0, 0, 255)), Truck("BLUE", 620, 230, (255, 0, 0)),
+                 Truck("GREEN", 620, 360, (0, 255, 0))]
+stats = {"Red": 0, "Blue": 0, "Green": 0, "Miss": 0}
+car_stats = {"Red": 0, "Blue": 0, "Green": 0}
+total_box_processed, accumulated_work_time, last_start_time = 0, 0, time.time()
+items, is_dragging, dragged_item, fail_count, is_paused, msg_text, msg_timer, pause_reason = [], False, None, 0, False, "", 0, ""
+
+
+def create_item():
+    targets, colors = ["RED", "BLUE", "GREEN"], [(0, 0, 255), (255, 0, 0), (0, 255, 0)]
+    idx = random.randint(0, 2)
+    return {"x": 0, "y": 520, "label": targets[idx], "label_char": targets[idx][0], "color": colors[idx]}
+
+
+def mouse_event(event, x, y, flags, param):
+    global is_dragging, dragged_item, stats, fail_count, msg_text, msg_timer, is_paused, total_box_processed, last_start_time, accumulated_work_time
+    if is_paused: return
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        for item in items:
+            if abs(x - item["x"]) < 40 and abs(y - item["y"]) < 40:
+                is_dragging, dragged_item = True, item
+                items.remove(item);
+                break
+
+    elif event == cv2.EVENT_MOUSEMOVE and is_dragging:
+        dragged_item["x"], dragged_item["y"] = x, y
+
+    elif event == cv2.EVENT_LBUTTONUP and is_dragging:
+        handled = False
+        # 트럭 충돌 판정
+        for truck in truck_objects:
+            if not truck.is_leaving and (truck.x < x < truck.x + 150) and (truck.y < y < truck.y + 85):
+                handled = True  # 트럭 영역에 닿았음
+                if dragged_item["label"] == truck.name:
+                    truck.current_qty += 1
+                    stats[truck.name.capitalize()] += 1
+                    total_box_processed += 1
+                    fail_count = 0  # 성공 시 실수 초기화
+                    msg_text = f"{truck.name} LOADED!"
+                    if truck.current_qty >= truck.target_qty:
+                        truck.is_leaving = True
+                        msg_text = f"{truck.name} DEPARTING!"
+                else:
+                    msg_text = "WRONG TRUCK!"
+                    fail_count += 1
+                    stats["Miss"] += 1
+                break  # 트럭 하나를 찾았으니 for문 종료
+
+        # [수정 핵심] 어떤 트럭과도 닿지 않았을 때만 MISS 처리
+        if not handled:
+            msg_text = "DROPPED!"
+            fail_count += 1
+            stats["Miss"] += 1
+
+        msg_timer = 30
+        is_dragging = False
+        dragged_item = None
+
+
+# 3. 메인 루프
+cv2.namedWindow('Smart Logistics Monitor')
+cv2.setMouseCallback('Smart Logistics Monitor', mouse_event)
+
+while True:
+    frame = factory_bg.copy()
+    overlay = frame.copy()
+
+    # MISS 2개 시 즉시 정지 (상시 감시)
+    if fail_count >= 2 and not is_paused:
+        is_paused, pause_reason = True, "ERROR"
+        accumulated_work_time += (time.time() - last_start_time)
+        play_double_alert()
+
+    total_elapsed = int(accumulated_work_time + (time.time() - last_start_time)) if not is_paused else int(
+        accumulated_work_time)
+
+    # UI 영역 설정
+    cv2.rectangle(overlay, (0, 0), (scr_w, 55), (20, 20, 20), -1)
+    cv2.rectangle(overlay, (0, scr_h - 50), (scr_w, scr_h), (0, 0, 0), -1)
+
+    if is_paused:
+        cv2.rectangle(overlay, (0, 0), (scr_w, scr_h), (0, 0, 0), -1)
+        frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+        display_msg = "WARNING: CHECK YOUR WORK!" if pause_reason == "ERROR" else "USER REST TIME"
+        cv2.putText(frame, display_msg, (120, 250), 1, 2.5, (0, 0, 255), 4)
+        cv2.putText(frame, "PRESS ENTER TO RESUME", (230, 320), 1, 1.5, (255, 255, 255), 2)
+        if cv2.waitKey(1) == 13:
+            is_paused, fail_count, items, last_start_time, pause_reason = False, 0, [], time.time(), ""
+    else:
+        # 컨베이어 벨트
+        cv2.rectangle(frame, (0, 480), (scr_w, 560), (60, 60, 60), -1)
+        if len(items) < 3 and (not items or items[-1]["x"] > 250) and random.random() < 0.05:
+            items.append(create_item())
+
+        # 트럭 그리기 (업데이트 포함)
+        for truck in truck_objects:
+            truck.update()
+            truck.draw(frame)
+
+        # 아이템 이동 및 그리기
+        for item in items[:]:
+            item["x"] += 3
+            cv2.rectangle(frame, (item["x"] - 30, item["y"] - 30), (item["x"] + 30, item["y"] + 30), (100, 60, 20), -1)
+            cv2.rectangle(frame, (item["x"] - 30, item["y"] - 30), (item["x"] + 30, item["y"] + 30), item["color"], 2)
+            cv2.putText(frame, item["label_char"], (item["x"] - 10, item["y"] + 10), cv2.FONT_HERSHEY_DUPLEX, 1.0,
+                        (255, 255, 255), 2)
+
+            if item["x"] > scr_w:
+                items.remove(item)
+                fail_count += 1
+                stats["Miss"] += 1
+                msg_timer, msg_text = 20, "MISS!"
+
+    # --- 텍스트 UI (가장 마지막에 그려서 가려짐 방지) ---
+    for i, (k, v) in enumerate(stats.items()):
+        color = (0, 0, 255) if k == 'Red' else (255, 0, 0) if k == 'Blue' else (0, 255, 0) if k == 'Green' else (180,
+                                                                                                                 180,
+                                                                                                                 180)
+        cv2.putText(frame, f"{k.upper()}: {v}", (40 + i * 185, 38), 1, 1.4, color, 2)
+
+    cv2.putText(frame, f"TOTAL PROCESSED: {total_box_processed}", (20, 85), 1, 1.2, (255, 255, 0), 2)
+    car_label = f"SHIPPED > RED:{car_stats['Red']} | BLUE:{car_stats['Blue']} | GREEN:{car_stats['Green']}"
+    cv2.putText(frame, car_label, (280, 85), 1, 1.0, (255, 255, 255), 1)
+
+    # 하단 시간
+    h, m, s = total_elapsed // 3600, (total_elapsed % 3600) // 60, total_elapsed % 60
+    cv2.putText(frame, f"WORK TIME : {h:02d}:{m:02d}:{s:02d}", (20, scr_h - 15), 1, 1.0, (0, 0, 255), 1)
+    cv2.putText(frame, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), (scr_w - 280, scr_h - 15), 1, 1.0, (0, 255, 0), 1)
+
+    if msg_timer > 0:
+        cv2.putText(frame, msg_text, (200, 150), 1, 2, (0, 255, 255), 3)
+        msg_timer -= 1
+
+    if is_dragging and dragged_item:
+        cv2.rectangle(frame, (dragged_item["x"] - 35, dragged_item["y"] - 35),
+                      (dragged_item["x"] + 35, dragged_item["y"] + 35), dragged_item["color"], 4)
+        cv2.putText(frame, dragged_item["label_char"], (dragged_item["x"] - 10, dragged_item["y"] + 10),
+                    cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 255, 255), 2)
+
+    frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
+    cv2.imshow('Smart Logistics Monitor', frame)
+
+    key = cv2.waitKey(20) & 0xFF
+    if key == ord('q'):
+        break
+    elif key == ord('t') and not is_paused:
+        is_paused, pause_reason = True, "MANUAL";
+        accumulated_work_time += (time.time() - last_start_time)
+
+cv2.destroyAllWindows()
